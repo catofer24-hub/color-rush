@@ -1,22 +1,55 @@
-import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-const base='https://rffuphwifxhngizzgdol.supabase.co';
-// Chave pública (anon), não uma service_role key. Configurar a chave real antes de ativar.
-const publicAnonKey='REPLACE_WITH_SUPABASE_PUBLISHABLE_OR_ANON_KEY';
-const msg=document.getElementById('msg'),button=document.getElementById('save');
-const report=(s)=>{msg.textContent=s};
-if(publicAnonKey.startsWith('REPLACE_')){report('Página ainda em configuração. Não é possível alterar a palavra-passe.');}
-else {
-const supabase=createClient(base,publicAnonKey,{auth:{detectSessionInUrl:true,persistSession:false,autoRefreshToken:false}});
-const fragment=new URLSearchParams(location.hash.slice(1));
-const query=new URLSearchParams(location.search);
-if(fragment.get('type')==='recovery'&&fragment.get('access_token')&&fragment.get('refresh_token')){
- const {error}=await supabase.auth.setSession({access_token:fragment.get('access_token'),refresh_token:fragment.get('refresh_token')});
- if(error)report('Ligação inválida ou expirada. Pede um novo email de recuperação.');
- else {history.replaceState(null,'',location.pathname);button.disabled=false;report('Ligação validada. Introduz uma nova palavra-passe.');}
-}else if(query.get('token_hash')&&query.get('type')==='recovery'){
- const {error}=await supabase.auth.verifyOtp({token_hash:query.get('token_hash'),type:'recovery'});
- if(error)report('Ligação inválida ou expirada.');
- else {history.replaceState(null,'',location.pathname);button.disabled=false;report('Ligação validada. Introduz uma nova palavra-passe.');}
-}else report('Esta página requer uma ligação de recuperação válida.');
-button.addEventListener('click',async()=>{const p=document.getElementById('pw').value,c=document.getElementById('confirm').value;if(p.length<8||p!==c){report('Confirma a palavra-passe (mínimo 8 caracteres).');return;}button.disabled=true;const {error}=await supabase.auth.updateUser({password:p});if(error){report('Não foi possível alterar a palavra-passe: '+error.message);button.disabled=false;return;}await supabase.auth.signOut();report('Palavra-passe atualizada. Já podes iniciar sessão no COLOR RUSH.');});
+// COLOR RUSH — Supabase password recovery via direct Auth REST API.
+// Public publishable key only. Never use service_role or a secret key in browser code.
+const BASE='https://rffuphwifxhngizzgdol.supabase.co';
+const PUBLIC_KEY='sb_publishable_G48ZjciOAgzrHFJhK-7hqQ_nnjmVyg8';
+const msg=document.getElementById('msg');
+const button=document.getElementById('save');
+const report=text=>{msg.textContent=text};
+let accessToken='';
+const request=async(path,body,token='')=>{
+ const resp=await fetch(BASE+'/auth/v1/'+path,{method:'POST',headers:{'apikey':PUBLIC_KEY,'Content-Type':'application/json',...(token?{'Authorization':'Bearer '+token}:{})},body:JSON.stringify(body),cache:'no-store',referrerPolicy:'no-referrer'});
+ const result=await resp.json().catch(()=>({}));
+ if(!resp.ok)throw Error(result.error_description||result.msg||result.message||result.error||'HTTP '+resp.status);
+ return result;
+};
+const clearSensitiveUrl=()=>history.replaceState(null,'',location.pathname);
+async function verifyRecovery(){
+ const frag=new URLSearchParams(location.hash.substring(1));
+ const query=new URLSearchParams(location.search);
+ // Supported implicit recovery URL: #access_token=...&refresh_token=...&type=recovery
+ if(frag.get('type')==='recovery'&&frag.get('access_token')){
+  accessToken=frag.get('access_token');
+  clearSensitiveUrl();
+ }else if(query.get('type')==='recovery'&&query.get('token_hash')){
+  // Alternative email templates that link directly with token_hash.
+  const data=await request('verify',{type:'recovery',token_hash:query.get('token_hash')});
+  accessToken=data.access_token||'';
+  clearSensitiveUrl();
+ }else{
+  clearSensitiveUrl();
+  report('Ligação inválida, expirada ou incompatível. Pede uma nova recuperação no jogo. / Invalid or expired link; request another one in the game.');
+  return;
+ }
+ if(!accessToken)throw Error('Não foi possível obter uma sessão válida.');
+ const r=await fetch(BASE+'/auth/v1/user',{headers:{'apikey':PUBLIC_KEY,'Authorization':'Bearer '+accessToken},cache:'no-store',referrerPolicy:'no-referrer'});
+ if(!r.ok)throw Error('A sessão expirou. Pede um novo email.');
+ button.disabled=false;
+ report('Ligação validada. Escolhe uma nova palavra-passe. / Verified. Choose a new password.');
 }
+try{await verifyRecovery();}catch(e){accessToken='';button.disabled=true;clearSensitiveUrl();report(e.message)}
+button.addEventListener('click',async()=>{
+ if(!accessToken)return;
+ const password=document.getElementById('pw').value;
+ const confirmation=document.getElementById('confirm').value;
+ if(password.length<8||password!==confirmation){report('A palavra-passe deve ter pelo menos 8 caracteres e coincidir nos dois campos.');return;}
+ button.disabled=true;
+ try{
+  const resp=await fetch(BASE+'/auth/v1/user',{method:'PUT',headers:{'apikey':PUBLIC_KEY,'Authorization':'Bearer '+accessToken,'Content-Type':'application/json'},body:JSON.stringify({password}),cache:'no-store',referrerPolicy:'no-referrer'});
+  const result=await resp.json().catch(()=>({}));
+  if(!resp.ok)throw Error(result.error_description||result.msg||result.message||'Erro na atualização.');
+  // Revoke the web recovery session after use; the player can log in from the game.
+  await fetch(BASE+'/auth/v1/logout',{method:'POST',headers:{'apikey':PUBLIC_KEY,'Authorization':'Bearer '+accessToken},referrerPolicy:'no-referrer'}).catch(()=>{});
+  accessToken='';document.getElementById('pw').value='';document.getElementById('confirm').value='';
+  report('Palavra-passe atualizada. Volta ao COLOR RUSH e inicia sessão. / Password updated. Sign in to COLOR RUSH.');
+ }catch(e){button.disabled=false;report(e.message)}
+});
