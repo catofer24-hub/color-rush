@@ -1,1 +1,21 @@
-# color-rush
+# COLOR RUSH — AKOPHH
+
+Site de apoio e preparação da publicação Android.
+
+## Ativar GitHub Pages
+
+No repositório, abrir **Settings → Pages → Build and deployment** e escolher **Deploy from a branch**, **main** e **/(root)**. Guardar as alterações.
+
+O endereço esperado, depois de publicado, é:
+https://catofer24-hub.github.io/color-rush/
+
+## Antes do lançamento
+
+- Finalizar a política de privacidade: contacto, dados recolhidos, prestadores, fundamento jurídico e prazos de conservação efetivamente implementados.
+- Criar um canal externo funcional para pedidos de eliminação de conta: a página pública atual informa sobre o processo, **mas ainda não recebe pedidos externos**.
+- Configurar o envio de emails no Supabase Auth e autorizar o endereço de redirecionamento `https://catofer24-hub.github.io/color-rush/reset-password.html`.
+- Substituir a chave pública Supabase placeholder em `reset-password.js` por uma chave pública válida. **Nunca publicar a service_role key**.
+- Testar recuperação completa com uma conta descartável e verificar que o jogo aceita a palavra-passe alterada.
+- Verificar consentimento publicitário/Google UMP, Data Safety, segurança e eliminação efetiva antes de submeter à Google Play.
+
+**Estado:** site de pré-publicação. As páginas não constituem uma declaração de conformidade concluída.
